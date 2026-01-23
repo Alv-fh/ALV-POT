@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  # Cowrie - SSH/Telnet
+  cowrie:
+    image: "ghcr.io/telekom-security/cowrie:24.04.1"
+    container_name: cowrie
+    restart: unless-stopped
+    tmpfs:
+      - /tmp/cowrie:uid=2000,gid=2000
+      - /tmp/cowrie/data:uid=2000,gid=2000
+    ports:
+      - "2222:22"
+      - "2223:23"
+    read_only: true
+    volumes:
+      - ./data/cowrie/downloads:/home/cowrie/cowrie/dl
+      - ./data/cowrie/keys:/home/cowrie/cowrie/etc:rw
+      - ./data/cowrie/log:/home/cowrie/cowrie/log:rw
+      - ./data/cowrie/log/tty:/home/cowrie/cowrie/log/tty:rw
+    user: "2000:2000"
+    networks:
+      - honeypot-net
+
+  # Dionaea - HTTP/S FTP SMB
+  dionaea:
+    image: "dtagdevsec/dionaea:24.04.1"
+    container_name: dionaea
+    restart: unless-stopped
+    ports:
+      - "21:21"
+      - "445:445"
+    volumes:
+      - ./data/dionaea/log:/opt/dionaea/var/log:rw
+      - ./data/dionaea/lib:/opt/dionaea/var/lib/dionaea:rw
+      - ./data/dionaea/dionaea:/opt/dionaea/var/dionaea:rw
+    environment:
+      - DIONAEA_UID=0
+      - DIONAEA_GID=0
+      - PYTHONUNBUFFERED=1
+    networks:
+      - honeypot-net
+  # RDPY - RDP
+  rdpy:
+    image: "amazedostrich/rdpy"
+    container_name: rdpy
+    restart: unless-stopped
+    ports:
+      - "3389:3389"
+    volumes:
+      - ./data/rdpy/logs:/var/log/rdpy:rw
+      - ./data/rdpy/sessions:/sessions:rw
+    environment:
+      - RDPY_LOG_JSON=true
+      - RDPY_LOG_LEVEL=INFO
+
+  # DVWA - Web
+  dvwa-mysql:
+    image: mysql:5.7
+    container_name: dvwa-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=dvwa
+      - MYSQL_DATABASE=dvwa
+      - MYSQL_USER=dvwa
+      - MYSQL_PASSWORD=dvwa
+    volumes:
+      - ./data/dvwa/mysql:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+
+  dvwa-web:
+    image: vulnerables/web-dvwa:latest
+    container_name: dvwa
+    ports:
+      - "80:80"
+    volumes:
+      - ./data/dvwa/logs:/var/log/apache2
+      - ./data/dvwa/config:/app/config
+      - ./data/dvwa/uploads:/app/hackable/uploads
+    environment:
+      - MYSQL_HOST=dvwa-mysql
+      - MYSQL_PORT=3306
+      - MYSQL_DATABASE=dvwa
+      - MYSQL_USER=dvwa
+      - MYSQL_PASSWORD=dvwa
+      - SECURITY_LEVEL=low
+    depends_on:
+      - dvwa-mysql
+    restart: unless-stopped
+    command: >
+      sh -c "
+      # Esperar a MySQL
+      while ! nc -z dvwa-mysql 3306; do
+        sleep 1
+      done
+      # Configurar archivo
+      cp /app/config/config.inc.php.dist /app/config/config.inc.php
+      sed -i \"s/'127.0.0.1'/'dvwa-mysql'/g\" /app/config/config.inc.php
+      sed -i \"s/'dvwa'/'dvwa'/g\" /app/config/config.inc.php
+      sed -i \"s/'dvwa'/'dvwa'/g\" /app/config/config.inc.php
+      exec apache2-foreground
+      "
+networks:
+  honeypot-net:
+    driver: bridge
