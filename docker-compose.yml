@@ -1,17 +1,88 @@
 version: '3.8'
 
 services:
-  # Cowrie - SSH/Telnet
+  # ========== ELASTICSEARCH ==========
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - ./data/elasticsearch:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - monitoring-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+
+  # ========== KIBANA ==========
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    networks:
+      - monitoring-net
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5601/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+
+  # ========== LOGSTASH ==========
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.0
+    container_name: logstash
+    volumes:
+      - ./config/logstash/pipeline:/usr/share/logstash/pipeline
+      - ./data:/var/log/honeypots
+    ports:
+      - "5044:5044"
+      - "5000:5000/tcp"
+    networks:
+      - monitoring-net
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+    command: >
+      bash -c "
+      echo 'Esperando a Elasticsearch...'
+      until curl -s http://elasticsearch:9200 > /dev/null; do
+        sleep 5
+      done
+      echo 'Iniciando Logstash...'
+      /usr/local/bin/docker-entrypoint
+      "
+
+  # ========== HONEYPOTS ==========
   cowrie:
-    image: "ghcr.io/telekom-security/cowrie:24.04.1"
+    image: "ghcr.io/telekom-security/cowrie:latest"
     container_name: cowrie
     restart: unless-stopped
     tmpfs:
       - /tmp/cowrie:uid=2000,gid=2000
       - /tmp/cowrie/data:uid=2000,gid=2000
     ports:
-      - "2222:22"
-      - "2223:23"
+      - "2222:2222"
+      - "2223:2223"
     read_only: true
     volumes:
       - ./data/cowrie/downloads:/home/cowrie/cowrie/dl
@@ -20,11 +91,10 @@ services:
       - ./data/cowrie/log/tty:/home/cowrie/cowrie/log/tty:rw
     user: "2000:2000"
     networks:
-      - honeypot-net
+      - monitoring-net
 
-  # Dionaea - HTTP/S FTP SMB
   dionaea:
-    image: "dtagdevsec/dionaea:24.04.1"
+    image: "dtagdevsec/dionaea:latest"
     container_name: dionaea
     restart: unless-stopped
     ports:
@@ -39,8 +109,8 @@ services:
       - DIONAEA_GID=0
       - PYTHONUNBUFFERED=1
     networks:
-      - honeypot-net
-  # RDPY - RDP
+      - monitoring-net
+
   rdpy:
     image: "amazedostrich/rdpy"
     container_name: rdpy
@@ -53,10 +123,11 @@ services:
     environment:
       - RDPY_LOG_JSON=true
       - RDPY_LOG_LEVEL=INFO
+    networks:
+      - monitoring-net
 
-  # DVWA - Web
   dvwa-mysql:
-    image: mysql:5.7
+    image: mariadb:10.6
     container_name: dvwa-mysql
     environment:
       - MYSQL_ROOT_PASSWORD=dvwa
@@ -68,10 +139,11 @@ services:
     ports:
       - "3306:3306"
     restart: unless-stopped
-    command: --default-authentication-plugin=mysql_native_password
+    networks:
+      - monitoring-net
 
   dvwa-web:
-    image: vulnerables/web-dvwa:latest
+    image: vulnerables/web-dvwa
     container_name: dvwa
     ports:
       - "80:80"
@@ -89,19 +161,9 @@ services:
     depends_on:
       - dvwa-mysql
     restart: unless-stopped
-    command: >
-      sh -c "
-      # Esperar a MySQL
-      while ! nc -z dvwa-mysql 3306; do
-        sleep 1
-      done
-      # Configurar archivo
-      cp /app/config/config.inc.php.dist /app/config/config.inc.php
-      sed -i \"s/'127.0.0.1'/'dvwa-mysql'/g\" /app/config/config.inc.php
-      sed -i \"s/'dvwa'/'dvwa'/g\" /app/config/config.inc.php
-      sed -i \"s/'dvwa'/'dvwa'/g\" /app/config/config.inc.php
-      exec apache2-foreground
-      "
+    networks:
+      - monitoring-net
+
 networks:
-  honeypot-net:
+  monitoring-net:
     driver: bridge
