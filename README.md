@@ -1,38 +1,30 @@
-# 🛡️ ALV-POT - Sistema de Honeypots para Entornos Municipales
+# 🛡️ Honeypot Stack with ELK
 
-![Docker](https://img.shields.io/badge/Docker-Enabled-blue)
-![Python](https://img.shields.io/badge/Python-3.9-green)
-![MySQL](https://img.shields.io/badge/MySQL-8.0-orange)
+Stack completo de honeypots con monitoreo Elasticsearch + Kibana + Logstash.
 
-Sistema de detección temprana de ciberataques mediante honeypots dockerizados, diseñado específicamente para entornos de administración pública como el Ayuntamiento de Sevilla.
+## 🚀 Características
 
-## 🎯 Características Principales
+- **Honeypots**: Cowrie (SSH/Telnet), Dionaea (FTP/SMB), RDPy (RDP), DVWA (Web vulnerable)
+- **Monitoreo**: Elasticsearch + Kibana + Logstash (ELK Stack)
+- **Automatización**: Script de instalación y configuración completo
 
-- **🐳 Contenedores Docker**: Fácil despliegue y aislamiento
-- **🎯 Múltiples Honeypots**: SSH, Web, FTP, SMB, MySQL
-- **📊 Dashboard en Tiempo Real**: Grafana con métricas visuales
-- **🏛️ Personalización Municipal**: Adaptado para Ayuntamientos
-- **🔔 Sistema de Alertas**: Notificaciones automáticas
-- **📈 Análisis de Amenazas**: Geolocalización y patrones de ataque
+## 📦 Requisitos
 
-## 🚀 Instalación Rápida
+- Linux (Ubuntu/Debian/CentOS)
+- 4GB RAM mínimo (8GB recomendado)
+- 20GB espacio en disco
 
-### Prerrequisitos
-- **Docker** y **Docker Compose** instalados
-- **Ubuntu Server 20.04+** recomendado
-- **4GB RAM + 2 CPUs** mínimo
-- **Puertos abiertos**: 22, 80, 443, 2222, 3306, 3000
-
-### Instalación en 3 Pasos
+## ⚡ Instalación Rápida
 
 ```bash
-# 1. Clonar el repositorio
-git clone https://github.com/tuusuario/alv-pot.git
-cd alv-pot
+# 1. Clonar repositorio
+git clone https://github.com/tu-usuario/honeypot-stack.git
+cd honeypot-stack
 
-# 2. Ejecutar script de configuración
-chmod +x scripts/setup.sh
-./scripts/setup.sh
+# 2. Instalar Docker (si no está instalado)
+chmod +x scripts/install-docker.sh
+./scripts/install-docker.sh
 
-# 3. Desplegar todos los servicios
-docker-compose up -d
+# 3. Iniciar stack
+chmod +x setup.sh
+./setup.sh start
