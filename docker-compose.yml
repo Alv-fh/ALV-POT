@@ -1,221 +1,169 @@
-#!/bin/bash
+version: '3.8'
 
-# Honeypot Stack Setup - Versión corregida
-# By: ALV-POT
+services:
+  # ========== ELASTICSEARCH ==========
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - ./data/elasticsearch:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - monitoring-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
 
-set -e
+  # ========== KIBANA ==========
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    networks:
+      - monitoring-net
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5601/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
 
-# Colores
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+  # ========== LOGSTASH ==========
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.0
+    container_name: logstash
+    volumes:
+      - ./config/logstash/pipeline:/usr/share/logstash/pipeline
+      - ./data:/var/log/honeypots
+    ports:
+      - "5044:5044"
+      - "5000:5000/tcp"
+    networks:
+      - monitoring-net
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+    command: >
+      bash -c "
+      echo 'Esperando a Elasticsearch...'
+      until curl -s http://elasticsearch:9200 > /dev/null; do
+        sleep 5
+      done
+      echo 'Iniciando Logstash...'
+      /usr/local/bin/docker-entrypoint
+      "
 
-print() { echo -e "${GREEN}[+]${NC} $1"; }
-warn() { echo -e "${YELLOW}[!]${NC} $1"; }
-error() { echo -e "${RED}[x]${NC} $1"; }
-info() { echo -e "${BLUE}[i]${NC} $1"; }
+  # ========== HONEYPOTS ==========
+  cowrie:
+    image: "ghcr.io/telekom-security/cowrie:latest"
+    container_name: cowrie
+    restart: unless-stopped
+    tmpfs:
+      - /tmp/cowrie:uid=2000,gid=2000
+      - /tmp/cowrie/data:uid=2000,gid=2000
+    ports:
+      - "2222:2222"
+      - "2223:2223"
+    read_only: true
+    volumes:
+      - ./data/cowrie/downloads:/home/cowrie/cowrie/dl
+      - ./data/cowrie/keys:/home/cowrie/cowrie/etc:rw
+      - ./data/cowrie/log:/home/cowrie/cowrie/log:rw
+      - ./data/cowrie/log/tty:/home/cowrie/cowrie/log/tty:rw
+    user: "2000:2000"
+    networks:
+      - monitoring-net
 
-# Directorio actual
-BASE_DIR="$(pwd)"
+  dionaea:
+    image: "dtagdevsec/dionaea:latest"
+    container_name: dionaea
+    restart: unless-stopped
+    ports:
+      - "21:21"
+      - "445:445"
+    volumes:
+      - ./data/dionaea/log:/opt/dionaea/var/log:rw
+      - ./data/dionaea/lib:/opt/dionaea/var/lib/dionaea:rw
+      - ./data/dionaea/dionaea:/opt/dionaea/var/dionaea:rw
+    environment:
+      - DIONAEA_UID=0
+      - DIONAEA_GID=0
+      - PYTHONUNBUFFERED=1
+    networks:
+      - monitoring-net
 
-# Verificar Docker
-check_docker() {
-    if ! command -v docker &> /dev/null; then
-        error "Docker no encontrado"
-        info "Instala con: sudo apt install docker.io docker-compose"
-        exit 1
-    fi
-    
-    if ! docker info &> /dev/null; then
-        if ! sudo docker info &> /dev/null; then
-            error "Docker no está ejecutándose"
-            info "Inicia con: sudo systemctl start docker"
-            exit 1
-        else
-            print "Docker funcionando (con sudo)"
-        fi
-    else
-        print "✓ Docker funcionando"
-    fi
-}
+  rdpy:
+    image: "amazedostrich/rdpy"
+    container_name: rdpy
+    restart: unless-stopped
+    ports:
+      - "3389:3389"
+    volumes:
+      - ./data/rdpy/logs:/var/log/rdpy:rw
+      - ./data/rdpy/sessions:/sessions:rw
+    environment:
+      - RDPY_LOG_JSON=true
+      - RDPY_LOG_LEVEL=INFO
+    networks:
+      - monitoring-net
 
-# Configurar sistema
-configure_system() {
-    print "Configurando sistema..."
-    
-    # Memoria para Elasticsearch
-    sudo sysctl -w vm.max_map_count=262144 2>/dev/null || warn "No se pudo configurar sysctl"
-    
-    # Verificar espacio
-    FREE_SPACE=$(df -h . | awk 'NR==2 {print $4}')
-    print "Espacio libre: $FREE_SPACE"
-}
+  dvwa-mysql:
+    image: mariadb:10.6
+    container_name: dvwa-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=dvwa
+      - MYSQL_DATABASE=dvwa
+      - MYSQL_USER=dvwa
+      - MYSQL_PASSWORD=dvwa
+    volumes:
+      - ./data/dvwa/mysql:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
+    networks:
+      - monitoring-net
 
-# Crear estructura
-create_structure() {
-    print "Creando estructura de directorios..."
-    
-    # Directorios de datos
-    mkdir -p data/elasticsearch
-    mkdir -p data/cowrie/{downloads,log,keys}
-    mkdir -p data/dionaea/{log,lib}
-    mkdir -p data/rdpy/logs
-    mkdir -p data/dvwa/mysql
-    mkdir -p data/dvwa/logs
-    
-    # Configuraciones
-    mkdir -p config
-    
-    # Permisos
-    chmod 777 data/elasticsearch 2>/dev/null || true
-    
-    print "✓ Estructura creada"
-}
+  dvwa-web:
+    image: vulnerables/web-dvwa
+    container_name: dvwa
+    ports:
+      - "80:80"
+    volumes:
+      - ./data/dvwa/logs:/var/log/apache2
+      - ./data/dvwa/config:/app/config
+      - ./data/dvwa/uploads:/app/hackable/uploads
+    environment:
+      - MYSQL_HOST=dvwa-mysql
+      - MYSQL_PORT=3306
+      - MYSQL_DATABASE=dvwa
+      - MYSQL_USER=dvwa
+      - MYSQL_PASSWORD=dvwa
+      - SECURITY_LEVEL=low
+    depends_on:
+      - dvwa-mysql
+    restart: unless-stopped
+    networks:
+      - monitoring-net
 
-# Descargar imágenes
-pull_images() {
-    print "Descargando imágenes Docker..."
-    
-    # Lista de imágenes
-    local images=(
-        "elasticsearch:8.11.0"
-        "kibana:8.11.0"
-        "logstash:8.11.0"
-        "cowrie/cowrie:latest"
-        "ghcr.io/dtag-dev-sec/dionaea:latest"
-        "amazedostrich/rdpy:latest"
-        "mariadb:10.6"
-        "vulnerables/web-dvwa:latest"
-    )
-    
-    for image in "${images[@]}"; do
-        print "Descargando: $image"
-        docker pull "$image" 2>/dev/null || sudo docker pull "$image" || warn "Error descargando $image"
-    done
-    
-    print "✓ Imágenes descargadas"
-}
-
-# Iniciar servicios
-start_services() {
-    print "Iniciando servicios..."
-    
-    # Parar si ya está corriendo
-    docker-compose down 2>/dev/null || sudo docker-compose down 2>/dev/null || true
-    
-    # Iniciar en orden
-    print "1. Iniciando Elasticsearch..."
-    docker-compose up -d elasticsearch || sudo docker-compose up -d elasticsearch
-    
-    # Esperar a ES
-    info "Esperando a Elasticsearch (30 segundos)..."
-    sleep 30
-    
-    print "2. Iniciando Kibana..."
-    docker-compose up -d kibana || sudo docker-compose up -d kibana
-    
-    print "3. Iniciando honeypots..."
-    docker-compose up -d cowrie dionaea rdpy dvwa-mysql dvwa-web logstash || \
-    sudo docker-compose up -d cowrie dionaea rdpy dvwa-mysql dvwa-web logstash
-    
-    print "✓ Todos los servicios iniciados"
-}
-
-# Verificar servicios
-check_services() {
-    print "Verificando servicios..."
-    sleep 10
-    
-    echo ""
-    info "=== ESTADO DE SERVICIOS ==="
-    
-    # Elasticsearch
-    if curl -s http://localhost:9200 > /dev/null 2>&1; then
-        print "✓ Elasticsearch: http://localhost:9200"
-    else
-        warn "⚠ Elasticsearch: No responde (espera 1-2 min)"
-    fi
-    
-    # Kibana
-    if curl -s http://localhost:5601 > /dev/null 2>&1; then
-        print "✓ Kibana: http://localhost:5601"
-    else
-        warn "⚠ Kibana: Iniciando..."
-    fi
-    
-    # Honeypots
-    print "✓ Honeypots escuchando en:"
-    print "  - SSH/Telnet: localhost:2222-2223"
-    print "  - FTP: localhost:21"
-    print "  - RDP: localhost:3389"
-    print "  - DVWA: http://localhost"
-    print "  - MySQL: localhost:3306"
-    
-    echo ""
-    info "=== COMANDOS ÚTILES ==="
-    print "  Ver estado:   docker-compose ps"
-    print "  Ver logs:     docker-compose logs [nombre]"
-    print "  Detener:      ./setup.sh stop"
-    print "  Limpiar:      ./setup.sh cleanup"
-}
-
-# Comandos
-case "$1" in
-    start)
-        print "🚀 INICIANDO ALV-POT HONEYPOT STACK"
-        echo ""
-        
-        check_docker
-        configure_system
-        create_structure
-        pull_images
-        start_services
-        check_services
-        ;;
-        
-    stop)
-        print "🛑 Deteniendo servicios..."
-        docker-compose down 2>/dev/null || sudo docker-compose down
-        print "✓ Servicios detenidos"
-        ;;
-        
-    status)
-        docker-compose ps 2>/dev/null || sudo docker-compose ps
-        ;;
-        
-    logs)
-        docker-compose logs -f 2>/dev/null || sudo docker-compose logs -f
-        ;;
-        
-    cleanup)
-        warn "⚠ ESTO ELIMINARÁ TODOS LOS DATOS"
-        read -p "¿Continuar? (escribe 'si'): " confirm
-        if [ "$confirm" = "si" ]; then
-            docker-compose down -v 2>/dev/null || sudo docker-compose down -v
-            rm -rf data
-            print "✓ Todo eliminado"
-        else
-            print "Operación cancelada"
-        fi
-        ;;
-        
-    help|--help|-h|"")
-        echo -e "${BLUE}ALV-POT Honeypot Stack${NC}"
-        echo ""
-        echo "Comandos:"
-        echo "  ./setup.sh start     - Iniciar stack completo"
-        echo "  ./setup.sh stop      - Detener todo"
-        echo "  ./setup.sh status    - Ver estado"
-        echo "  ./setup.sh logs      - Ver logs"
-        echo "  ./setup.sh cleanup   - Eliminar todo (datos incluidos)"
-        echo "  ./setup.sh help      - Mostrar ayuda"
-        ;;
-        
-    *)
-        error "Comando desconocido: $1"
-        ./setup.sh help
-        exit 1
-        ;;
-esac
+networks:
+  monitoring-net:
+    driver: bridge
