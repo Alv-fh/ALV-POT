@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Honeypot Stack Setup - Versión organizada
-# By: TuNombre
+# ALV-POT Honeypot Stack Setup
+# Script simplificado y funcional
 
 set -e
 
@@ -9,219 +9,177 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
 NC='\033[0m'
 
 print() { echo -e "${GREEN}[+]${NC} $1"; }
 warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 error() { echo -e "${RED}[x]${NC} $1"; }
 
-# Directorio actual
-BASE_DIR="$(pwd)"
-
-# Verificar si estamos en el directorio correcto
-check_environment() {
-    print "Verificando entorno..."
-    
-    # Verificar archivos esenciales
-    if [ ! -f "docker-compose.yml" ]; then
-        error "docker-compose.yml no encontrado"
+# Determinar comando Docker Compose
+get_compose_cmd() {
+    # Primero probar docker compose v2
+    if docker compose version &> /dev/null; then
+        echo "docker compose"
+    # Luego probar docker-compose v1
+    elif command -v docker-compose &> /dev/null; then
+        echo "docker-compose"
+    else
+        error "docker compose no encontrado"
         exit 1
     fi
-    
-    if [ ! -f "setup.sh" ]; then
-        warn "setup.sh no encontrado en el directorio actual"
-    fi
-    
-    print "Directorio base: $BASE_DIR"
 }
 
-# Instalar Docker si es necesario
-install_docker() {
+# Instalar dependencias si faltan
+install_deps() {
+    print "Verificando dependencias..."
+    
+    # Docker
     if ! command -v docker &> /dev/null; then
-        warn "Docker no encontrado"
-        
-        if [ -f "scripts/install-docker.sh" ]; then
-            print "Instalando Docker..."
-            chmod +x scripts/install-docker.sh
-            sudo ./scripts/install-docker.sh
-        else
-            error "Script de instalación no encontrado"
-            print "Instala Docker manualmente: https://docs.docker.com/engine/install/"
-            exit 1
-        fi
+        warn "Instalando Docker..."
+        sudo apt update
+        sudo apt install -y docker.io
+        sudo systemctl enable --now docker
     else
-        print "✓ Docker ya instalado"
+        print "✓ Docker instalado"
     fi
-}
-
-# Configurar sistema
-configure_system() {
-    print "Configurando sistema..."
     
-    # Memoria para Elasticsearch
+    # Docker Compose (plugin v2)
+    if ! docker compose version &> /dev/null; then
+        if ! command -v docker-compose &> /dev/null; then
+            warn "Instalando Docker Compose..."
+            sudo apt install -y docker-compose-v2
+        fi
+    fi
+    
+    # Configurar sistema para Elasticsearch
     sudo sysctl -w vm.max_map_count=262144 2>/dev/null || true
     
-    # Verificar si el usuario está en grupo docker
+    # Verificar grupo docker
     if ! groups $USER | grep -q docker; then
-        warn "Usuario no está en grupo docker"
-        sudo usermod -aG docker $USER 2>/dev/null && {
-            print "✓ Usuario agregado al grupo docker"
-            warn "⚠ Cierra sesión y vuelve a entrar o ejecuta: newgrp docker"
-        }
+        warn "Agregando usuario al grupo docker..."
+        sudo usermod -aG docker $USER
+        warn "⚠ Ejecuta: newgrp docker o cierra sesión"
     fi
 }
 
-# Crear estructura de directorios
-create_structure() {
-    print "Creando estructura..."
+# Iniciar stack
+start() {
+    print "🚀 Iniciando ALV-POT..."
     
-    # Directorios de datos
-    mkdir -p data/elasticsearch
-    mkdir -p data/cowrie/{downloads,keys,log,tty}
-    mkdir -p data/dionaea/{log,lib,dionaea}
-    mkdir -p data/rdpy/{logs,sessions}
-    mkdir -p data/dvwa/{mysql,logs,config,uploads}
+    install_deps
     
-    # Configuraciones si no existen
-    mkdir -p config
+    # Crear directorios si no existen
+    mkdir -p data/elasticsearch data/cowrie/{log,downloads}
     
-    # Permisos
-    sudo chown 1000:1000 data/elasticsearch 2>/dev/null || true
-    sudo chown -R 2000:2000 data/cowrie 2>/dev/null || true
-    
-    print "✓ Estructura creada"
-}
-
-# Iniciar servicios
-start_services() {
-    print "Iniciando servicios Docker..."
-    
-    # Parar si ya está corriendo
-    docker-compose down 2>/dev/null || true
+    # Obtener comando compose
+    COMPOSE_CMD=$(get_compose_cmd)
+    print "Usando: $COMPOSE_CMD"
     
     # Iniciar
-    if docker-compose up -d; then
-        print "✓ Servicios iniciados"
-    else
-        error "Error al iniciar servicios"
-        exit 1
-    fi
+    print "Iniciando servicios..."
+    $COMPOSE_CMD up -d
+    
+    print "✅ Stack iniciado"
+    echo ""
+    echo "🎯 Servicios disponibles:"
+    echo "  Elasticsearch: http://localhost:9200"
+    echo "  Kibana:        http://localhost:5601"
+    echo "  Cowrie SSH:    localhost:2222 (root/cualquier)"
+    echo "  Cowrie Telnet: localhost:2223"
+    echo "  DVWA:          http://localhost (admin/password)"
+    echo ""
+    echo "📊 Ver estado:   $COMPOSE_CMD ps"
+    echo "📝 Ver logs:     $COMPOSE_CMD logs"
+    echo "🛑 Detener:      $0 stop"
 }
 
-# Verificar servicios
-check_services() {
-    print "Verificando servicios..."
-    sleep 10
-    
-    # Elasticsearch
-    if curl -s http://localhost:9200 > /dev/null; then
-        print "✓ Elasticsearch funcionando"
+# Detener stack
+stop() {
+    COMPOSE_CMD=$(get_compose_cmd)
+    print "Deteniendo servicios..."
+    $COMPOSE_CMD down
+    print "✅ Servicios detenidos"
+}
+
+# Ver estado
+status() {
+    COMPOSE_CMD=$(get_compose_cmd)
+    $COMPOSE_CMD ps
+    echo ""
+    print "Verificando Elasticsearch..."
+    curl -s http://localhost:9200 2>/dev/null || warn "No responde"
+}
+
+# Ver logs
+logs() {
+    COMPOSE_CMD=$(get_compose_cmd)
+    $COMPOSE_CMD logs -f
+}
+
+# Limpiar todo
+cleanup() {
+    warn "⚠ Esto eliminará TODOS los datos"
+    read -p "¿Continuar? (s/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Ss]$ ]]; then
+        COMPOSE_CMD=$(get_compose_cmd)
+        $COMPOSE_CMD down -v
+        rm -rf data
+        print "✅ Todo limpiado"
     else
-        warn "Elasticsearch no responde (puede tardar 1-2 minutos)"
+        print "❌ Cancelado"
     fi
-    
-    # Kibana
-    if curl -s http://localhost:5601 > /dev/null; then
-        print "✓ Kibana funcionando"
-    else
-        warn "Kibana iniciando..."
-    fi
-    
-    # Honeypots
-    print "Honeypots escuchando en:"
-    echo "  • SSH:     localhost:2222"
-    echo "  • Telnet:  localhost:2223"
-    echo "  • FTP:     localhost:21"
-    echo "  • RDP:     localhost:3389"
-    echo "  • DVWA:    http://localhost"
 }
 
 # Mostrar ayuda
-show_help() {
-    echo -e "${BLUE}Honeypot Stack - Comandos disponibles:${NC}"
+help() {
+    echo "ALV-POT Honeypot Stack"
     echo ""
-    echo "  ./setup.sh start     - Iniciar todo el stack"
-    echo "  ./setup.sh stop      - Detener servicios"
-    echo "  ./setup.sh restart   - Reiniciar servicios"
-    echo "  ./setup.sh status    - Ver estado"
-    echo "  ./setup.sh logs      - Ver logs"
-    echo "  ./setup.sh cleanup   - Eliminar todo"
-    echo "  ./setup.sh help      - Mostrar ayuda"
+    echo "Uso: $0 [comando]"
     echo ""
+    echo "Comandos:"
+    echo "  start    - Iniciar stack completo"
+    echo "  stop     - Detener servicios"
+    echo "  restart  - Reiniciar servicios"
+    echo "  status   - Ver estado"
+    echo "  logs     - Ver logs en tiempo real"
+    echo "  cleanup  - Eliminar todo (datos incluidos)"
+    echo "  help     - Mostrar esta ayuda"
+    echo ""
+    echo "Ejemplos:"
+    echo "  $0 start      # Iniciar todo"
+    echo "  $0 logs       # Ver logs"
+    echo "  $0 cleanup    # Eliminar todo"
 }
 
 # Comando principal
-case "$1" in
+case "${1:-start}" in
     start)
-        check_environment
-        install_docker
-        configure_system
-        create_structure
-        start_services
-        check_services
-        
-        echo ""
-        echo -e "${BLUE}========================================${NC}"
-        echo -e "${GREEN}       🎯 HONEYPOT STACK LISTO       ${NC}"
-        echo -e "${BLUE}========================================${NC}"
-        echo ""
-        echo "📊 Kibana:        http://localhost:5601"
-        echo "🔍 Elasticsearch: http://localhost:9200"
-        echo "🛡️  Honeypots:"
-        echo "   - SSH/Telnet:  localhost:2222-2223"
-        echo "   - FTP/SMB:     localhost:21,445"
-        echo "   - RDP:         localhost:3389"
-        echo "   - DVWA:        http://localhost"
-        echo ""
-        echo "📝 Comandos útiles:"
-        echo "   docker-compose ps      # Ver estado"
-        echo "   docker-compose logs    # Ver logs"
-        echo "   ./setup.sh stop        # Detener todo"
-        echo ""
+        start
         ;;
-        
     stop)
-        print "Deteniendo servicios..."
-        docker-compose down
-        print "✓ Servicios detenidos"
+        stop
         ;;
-        
     restart)
-        docker-compose restart
-        print "✓ Servicios reiniciados"
+        stop
+        sleep 2
+        start
         ;;
-        
     status)
-        docker-compose ps
-        echo ""
-        print "Verificando Elasticsearch..."
-        curl -s http://localhost:9200 2>/dev/null || warn "No responde"
+        status
         ;;
-        
     logs)
-        docker-compose logs -f
+        logs
         ;;
-        
     cleanup)
-        warn "⚠ Esto eliminará TODOS los datos y contenedores"
-        read -p "¿Continuar? (escribe 'si'): " confirm
-        if [ "$confirm" = "si" ]; then
-            docker-compose down -v 2>/dev/null || true
-            sudo rm -rf data
-            print "✓ Todo limpiado"
-        else
-            print "Operación cancelada"
-        fi
+        cleanup
         ;;
-        
-    help|--help|-h|"")
-        show_help
+    help|--help|-h)
+        help
         ;;
-        
     *)
         error "Comando desconocido: $1"
-        show_help
+        help
         exit 1
         ;;
 esac
