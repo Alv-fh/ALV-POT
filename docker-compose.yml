@@ -1,128 +1,88 @@
 version: '3.8'
 
 services:
-  # ========== ELASTICSEARCH ==========
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
-    container_name: elasticsearch
+  # ========== MONITORING STACK ==========
+  opensearch:
+    image: opensearchproject/opensearch:latest
+    container_name: opensearch
     environment:
       - discovery.type=single-node
-      - xpack.security.enabled=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-      - bootstrap.memory_lock=true
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
+      - plugins.security.disabled=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"  # Menos memoria
+      - "DISABLE_INSTALL_DEMO_CONFIG=true"
     volumes:
-      - ./data/elasticsearch:/usr/share/elasticsearch/data
+      - ./data/opensearch:/usr/share/opensearch/data
     ports:
       - "9200:9200"
+      - "9600:9600"
     networks:
       - monitoring-net
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9200"]
-      interval: 30s
-      timeout: 10s
-      retries: 10
 
-  # ========== KIBANA ==========
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.11.0
-    container_name: kibana
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:latest
+    container_name: opensearch-dashboards
     environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - "OPENSEARCH_HOSTS=http://opensearch:9200"
+      - "DISABLE_SECURITY_DASHBOARDS_PLUGIN=true"
     ports:
       - "5601:5601"
     networks:
       - monitoring-net
     depends_on:
-      elasticsearch:
-        condition: service_healthy
+      - opensearch
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5601/api/status"]
-      interval: 30s
-      timeout: 10s
-      retries: 10
 
-  # ========== LOGSTASH ==========
   logstash:
-    image: docker.elastic.co/logstash/logstash:8.11.0
+    image: logstash:latest
     container_name: logstash
     volumes:
       - ./config/logstash/pipeline:/usr/share/logstash/pipeline
       - ./data:/var/log/honeypots
     ports:
       - "5044:5044"
-      - "5000:5000/tcp"
+      - "5000:5000"
     networks:
       - monitoring-net
     depends_on:
-      - elasticsearch
+      - opensearch
     restart: unless-stopped
-    command: >
-      bash -c "
-      echo 'Esperando a Elasticsearch...'
-      until curl -s http://elasticsearch:9200 > /dev/null; do
-        sleep 5
-      done
-      echo 'Iniciando Logstash...'
-      /usr/local/bin/docker-entrypoint
-      "
 
   # ========== HONEYPOTS ==========
   cowrie:
-    image: "ghcr.io/telekom-security/cowrie:latest"
+    image: "cowrie/cowrie:latest"
     container_name: cowrie
     restart: unless-stopped
-    tmpfs:
-      - /tmp/cowrie:uid=2000,gid=2000
-      - /tmp/cowrie/data:uid=2000,gid=2000
     ports:
       - "2222:2222"
       - "2223:2223"
-    read_only: true
     volumes:
-      - ./data/cowrie/downloads:/home/cowrie/cowrie/dl
-      - ./data/cowrie/keys:/home/cowrie/cowrie/etc:rw
-      - ./data/cowrie/log:/home/cowrie/cowrie/log:rw
-      - ./data/cowrie/log/tty:/home/cowrie/cowrie/log/tty:rw
-    user: "2000:2000"
+      - ./data/cowrie/downloads:/cowrie/dl
+      - ./data/cowrie/log:/cowrie/log
     networks:
       - monitoring-net
 
   dionaea:
-    image: "dtagdevsec/dionaea:latest"
+    image: "ghcr.io/dtag-dev-sec/dionaea:latest"
     container_name: dionaea
     restart: unless-stopped
     ports:
       - "21:21"
       - "445:445"
     volumes:
-      - ./data/dionaea/log:/opt/dionaea/var/log:rw
-      - ./data/dionaea/lib:/opt/dionaea/var/lib/dionaea:rw
-      - ./data/dionaea/dionaea:/opt/dionaea/var/dionaea:rw
-    environment:
-      - DIONAEA_UID=0
-      - DIONAEA_GID=0
-      - PYTHONUNBUFFERED=1
+      - ./data/dionaea/log:/opt/dionaea/var/log
+      - ./data/dionaea/lib:/opt/dionaea/var/lib/dionaea
     networks:
       - monitoring-net
 
   rdpy:
-    image: "amazedostrich/rdpy"
+    image: "amazedostrich/rdpy:latest"
     container_name: rdpy
     restart: unless-stopped
     ports:
       - "3389:3389"
     volumes:
-      - ./data/rdpy/logs:/var/log/rdpy:rw
-      - ./data/rdpy/sessions:/sessions:rw
-    environment:
-      - RDPY_LOG_JSON=true
-      - RDPY_LOG_LEVEL=INFO
+      - ./data/rdpy/logs:/var/log/rdpy
     networks:
       - monitoring-net
 
@@ -143,14 +103,12 @@ services:
       - monitoring-net
 
   dvwa-web:
-    image: vulnerables/web-dvwa
+    image: vulnerables/web-dvwa:latest
     container_name: dvwa
     ports:
       - "80:80"
     volumes:
       - ./data/dvwa/logs:/var/log/apache2
-      - ./data/dvwa/config:/app/config
-      - ./data/dvwa/uploads:/app/hackable/uploads
     environment:
       - MYSQL_HOST=dvwa-mysql
       - MYSQL_PORT=3306
