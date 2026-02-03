@@ -1,93 +1,167 @@
-version: '3.8'
-
 services:
   # ========== MONITORING STACK ==========
-  opensearch:
-    image: opensearchproject/opensearch:latest
-    container_name: opensearch
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.14
+    container_name: elasticsearch
     environment:
       - discovery.type=single-node
-      - plugins.security.disabled=true
-      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"  # Menos memoria
-      - "DISABLE_INSTALL_DEMO_CONFIG=true"
-    volumes:
-      - ./data/opensearch:/usr/share/opensearch/data
+      - "ES_JAVA_OPTS=-Xms256m -Xmx256m"  # Reducido para tu sistema
+      - xpack.security.enabled=false
+      - "http.host=0.0.0.0"
+      - "transport.host=127.0.0.1"
     ports:
       - "9200:9200"
-      - "9600:9600"
     networks:
       - monitoring-net
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data  # ← CAMBIA esto
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
-  opensearch-dashboards:
-    image: opensearchproject/opensearch-dashboards:latest
-    container_name: opensearch-dashboards
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.17.14
+    container_name: kibana
     environment:
-      - "OPENSEARCH_HOSTS=http://opensearch:9200"
-      - "DISABLE_SECURITY_DASHBOARDS_PLUGIN=true"
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SERVER_HOST=0.0.0.0
+      - SERVER_NAME=kibana
+    # DESACTIVA TODAS LAS CARACTERÍSTICAS DE X-PACK:
+      - XPACK_SECURITY_ENABLED=false
+      - XPACK_MONITORING_ENABLED=false
+      - XPACK_APM_ENABLED=false
+      - XPACK_GRAPH_ENABLED=false
+      - XPACK_ML_ENABLED=false
+      - XPACK_REPORTING_ENABLED=false
+      - XPACK_CANVAS_ENABLED=false
+      - XPACK_LENS_ENABLED=false
+      - XPACK_MAPS_ENABLED=false
+      - XPACK_UPTIME_ENABLED=false
+      - XPACK_SPACES_ENABLED=false
+      - XPACK_FLEET_ENABLED=false
+      - XPACK_TASK_MANAGER_ENABLED=false
+      - TELEMETRY_ENABLED=false
+    # Configuración de rendimiento:
+      - NODE_OPTIONS="--max-old-space-size=256"
+      - NODE_ENV=production
     ports:
       - "5601:5601"
     networks:
       - monitoring-net
     depends_on:
-      - opensearch
+      elasticsearch:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5601/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
 
   logstash:
-    image: logstash:latest
+    image: docker.elastic.co/logstash/logstash:7.17.14
     container_name: logstash
     volumes:
-      - ./config/logstash/pipeline:/usr/share/logstash/pipeline
-      - ./data:/var/log/honeypots
+      - ./config/logstash/pipeline:/usr/share/logstash/pipeline:rw
+      - ./config/logstash/templates:/usr/share/logstash/templates
+      - ./config/logstash/config:/usr/share/logstash/config
+      - ./data:/usr/share/logstash/data
     ports:
       - "5044:5044"
       - "5000:5000"
+      - "5001:5001"
+      - "5002:5002"
+      - "5003:5003"
+      - "514:514/udp"  # Para syslog
     networks:
       - monitoring-net
     depends_on:
-      - opensearch
+      - elasticsearch
     restart: unless-stopped
+    environment:
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   # ========== HONEYPOTS ==========
   cowrie:
-    image: "cowrie/cowrie:latest"
+    image: cowrie/cowrie:latest
     container_name: cowrie
     restart: unless-stopped
     ports:
       - "2222:2222"
       - "2223:2223"
     volumes:
-      - ./data/cowrie/downloads:/cowrie/dl
       - ./data/cowrie/log:/cowrie/log
-    networks:
-      - monitoring-net
+      - ./data/cowrie/downloads:/cowrie/dl
+    environment:
+      - COWRIE_JSONLOG=false
+    # COMANDO CORREGIDO:
+    command: >
+      bash -c "
+      mkdir -p /cowrie/log /cowrie/dl
+      chmod -R 777 /cowrie/log /cowrie/dl
+      cd /cowrie
+      /cowrie/bin/cowrie start
+      tail -f /cowrie/log/cowrie.log
+      "
 
   dionaea:
-    image: "ghcr.io/dtag-dev-sec/dionaea:latest"
+    image: stingar/dionaea:latest
     container_name: dionaea
     restart: unless-stopped
     ports:
       - "21:21"
+      - "42:42"
+      - "135:135"
       - "445:445"
+      - "1433:1433"
     volumes:
-      - ./data/dionaea/log:/opt/dionaea/var/log
-      - ./data/dionaea/lib:/opt/dionaea/var/lib/dionaea
-    networks:
-      - monitoring-net
+      - ./data/dionaea/log:/var/log/dionaea
+      - ./data/dionaea/binaries:/var/lib/dionaea/binaries
+    # Sin command especial - usar el por defecto
 
   rdpy:
-    image: "amazedostrich/rdpy:latest"
+    image: amazedostrich/rdpy:latest
     container_name: rdpy
     restart: unless-stopped
     ports:
       - "3389:3389"
     volumes:
       - ./data/rdpy/logs:/var/log/rdpy
-    networks:
-      - monitoring-net
+    # Sin command - usar el por defecto de la imagen
+
+
+
+
 
   dvwa-mysql:
-    image: mariadb:10.6
+    image: mysql:8.0
     container_name: dvwa-mysql
     environment:
       - MYSQL_ROOT_PASSWORD=dvwa
@@ -125,3 +199,8 @@ services:
 networks:
   monitoring-net:
     driver: bridge
+
+
+volumes:
+  elasticsearch-data:
+    driver: local
