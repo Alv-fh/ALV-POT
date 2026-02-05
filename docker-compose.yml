@@ -5,7 +5,7 @@ services:
     container_name: elasticsearch
     environment:
       - discovery.type=single-node
-      - "ES_JAVA_OPTS=-Xms256m -Xmx256m"  # Reducido para tu sistema
+      - "ES_JAVA_OPTS=-Xms256m -Xmx256m"
       - xpack.security.enabled=false
       - "http.host=0.0.0.0"
       - "transport.host=127.0.0.1"
@@ -14,7 +14,7 @@ services:
     networks:
       - monitoring-net
     volumes:
-      - elasticsearch-data:/usr/share/elasticsearch/data  # ← CAMBIA esto
+      - elasticsearch-data:/usr/share/elasticsearch/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9200"]
@@ -89,62 +89,46 @@ services:
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   # ========== HONEYPOTS ==========
+
+  # Cowrie
   cowrie:
-    image: cowrie/cowrie:latest
+    image: "ghcr.io/telekom-security/cowrie:24.04.1"
     container_name: cowrie
     restart: unless-stopped
+    tmpfs:
+      - /tmp/cowrie:uid=2000,gid=2000
+      - /tmp/cowrie/data:uid=2000,gid=2000
     ports:
-      - "2222:2222"
-      - "2223:2223"
+      - "2222:22"
+      - "2223:23"
+    read_only: true
     volumes:
-      - ./data/cowrie/log:/cowrie/log
-      - ./data/cowrie/downloads:/cowrie/dl
-    environment:
-      - COWRIE_JSONLOG=false
-    # COMANDO CORREGIDO:
-    command: >
-      bash -c "
-      mkdir -p /cowrie/log /cowrie/dl
-      chmod -R 777 /cowrie/log /cowrie/dl
-      cd /cowrie
-      /cowrie/bin/cowrie start
-      tail -f /cowrie/log/cowrie.log
-      "
+      - ./data/cowrie/downloads:/home/cowrie/cowrie/dl
+      - ./data/cowrie/keys:/home/cowrie/cowrie/etc:rw
+      - ./data/cowrie/log:/home/cowrie/cowrie/log:rw
+      - ./data/cowrie/log/tty:/home/cowrie/cowrie/log/tty:rw
+    user: "2000:2000"
+    networks:
+      - monitoring-net
 
   dionaea:
-    image: stingar/dionaea:latest
+    image: "dtagdevsec/dionaea:24.04.1"
     container_name: dionaea
     restart: unless-stopped
     ports:
       - "21:21"
-      - "42:42"
-      - "135:135"
       - "445:445"
-      - "1433:1433"
     volumes:
-      - ./data/dionaea/log:/var/log/dionaea
-      - ./data/dionaea/binaries:/var/lib/dionaea/binaries
-    # Sin command especial - usar el por defecto
+      - ./data/dionaea/log:/opt/dionaea/var/log:rw
+      - ./data/dionaea/lib:/opt/dionaea/var/lib/dionaea:rw
+      - ./data/dionaea/dionaea:/opt/dionaea/var/dionaea:rw
+    environment:
+      - DIONAEA_UID=0
+      - DIONAEA_GID=0
+      - PYTHONUNBUFFERED=1
+    networks:
+      - monitoring-net
 
   rdpy:
     image: amazedostrich/rdpy:latest
@@ -154,10 +138,6 @@ services:
       - "3389:3389"
     volumes:
       - ./data/rdpy/logs:/var/log/rdpy
-    # Sin command - usar el por defecto de la imagen
-
-
-
 
 
   dvwa-mysql:
