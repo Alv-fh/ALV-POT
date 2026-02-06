@@ -1,0 +1,9 @@
+http.host: "0.0.0.0"
+path.config: ../logstash/pipeline
+path.logs: ../logstash/logs
+path.data: ../logstash/data
+config.reload.automatic: true
+config.reload.interval: 3s
+queue.type: memory
+pipeline.workers: 1
+pipeline.batch.size: 125
