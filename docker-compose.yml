@@ -64,21 +64,28 @@ services:
       retries: 10
       start_period: 120s
 
-  logstash:
+ logstash:
     image: docker.elastic.co/logstash/logstash:7.17.14
     container_name: logstash
+    user: root 
     volumes:
+      # Configuración de Logstash
       - ./config/logstash/pipeline:/usr/share/logstash/pipeline:rw
-      - ./config/logstash/templates:/usr/share/logstash/templates
-      - ./config/logstash/config:/usr/share/logstash/config
-      - ./data:/usr/share/logstash/data
+      - ./config/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml
+      
+      # === MONTAJE DE LOGS DE LOS HONEYPOTS (LECTURA) ===
+      # Cowrie (JSON)
+      - ./data/cowrie/log:/var/log/cowrie:ro
+      # Dionaea (JSON)
+      - ./data/dionaea/log:/var/log/dionaea:ro
+      # RDPY
+      - ./data/rdpy/logs:/var/log/rdpy:ro
+      # DVWA (Apache Logs)
+      - ./data/dvwa/logs:/var/log/dvwa:ro
+      
     ports:
       - "5044:5044"
       - "5000:5000"
-      - "5001:5001"
-      - "5002:5002"
-      - "5003:5003"
-      - "514:514/udp"  # Para syslog
     networks:
       - monitoring-net
     depends_on:
