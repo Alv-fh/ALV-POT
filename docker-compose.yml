@@ -64,35 +64,35 @@ services:
       retries: 10
       start_period: 120s
 
- logstash:
-    image: docker.elastic.co/logstash/logstash:7.17.14
-    container_name: logstash
-    user: root 
-    volumes:
+  logstash:
+     image: docker.elastic.co/logstash/logstash:7.17.14
+     container_name: logstash
+     user: root 
+     volumes:
       # Configuración de Logstash
-      - ./config/logstash/pipeline:/usr/share/logstash/pipeline:rw
-      - ./config/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml
+       - ./config/logstash/pipeline:/usr/share/logstash/pipeline:rw
+       - ./config/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml
       
       # === MONTAJE DE LOGS DE LOS HONEYPOTS (LECTURA) ===
       # Cowrie (JSON)
-      - ./data/cowrie/log:/var/log/cowrie:ro
+       - ./data/cowrie/log:/var/log/cowrie:ro
       # Dionaea (JSON)
-      - ./data/dionaea/log:/var/log/dionaea:ro
+       - ./data/dionaea/log:/var/log/dionaea:ro
       # RDPY
-      - ./data/rdpy/logs:/var/log/rdpy:ro
+       - ./data/rdpy/logs:/var/log/rdpy:ro
       # DVWA (Apache Logs)
-      - ./data/dvwa/logs:/var/log/dvwa:ro
+       - ./data/dvwa/logs:/var/log/dvwa:ro
       
-    ports:
-      - "5044:5044"
-      - "5000:5000"
-    networks:
-      - monitoring-net
-    depends_on:
-      - elasticsearch
-    restart: unless-stopped
-    environment:
-      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+     ports:
+       - "5044:5044"
+       - "5000:5000"
+     networks:
+       - monitoring-net
+     depends_on:
+       - elasticsearch
+     restart: unless-stopped
+     environment:
+       - LS_JAVA_OPTS=-Xms256m -Xmx256m
 
 
 
@@ -116,24 +116,6 @@ services:
       - ./data/cowrie/log:/home/cowrie/cowrie/log:rw
       - ./data/cowrie/log/tty:/home/cowrie/cowrie/log/tty:rw
     user: "2000:2000"
-    networks:
-      - monitoring-net
-
-  dionaea:
-    image: "dtagdevsec/dionaea:24.04.1"
-    container_name: dionaea
-    restart: unless-stopped
-    ports:
-      - "21:21"
-      - "445:445"
-    volumes:
-      - ./data/dionaea/log:/opt/dionaea/var/log:rw
-      - ./data/dionaea/lib:/opt/dionaea/var/lib/dionaea:rw
-      - ./data/dionaea/dionaea:/opt/dionaea/var/dionaea:rw
-    environment:
-      - DIONAEA_UID=0
-      - DIONAEA_GID=0
-      - PYTHONUNBUFFERED=1
     networks:
       - monitoring-net
 
