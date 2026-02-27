@@ -118,7 +118,7 @@ services:
     user: "2000:2000"
     networks:
       - monitoring-net
-
+  # Rdpy
   rdpy:
     image: amazedostrich/rdpy:latest
     container_name: rdpy
@@ -127,8 +127,9 @@ services:
       - "3389:3389"
     volumes:
       - ./data/rdpy/logs:/var/log/rdpy
-
-
+    networks:
+      - monitoring-net
+  # Dvwa
   dvwa-mysql:
     image: mysql:8.0
     container_name: dvwa-mysql
@@ -164,12 +165,9 @@ services:
     restart: unless-stopped
     networks:
       - monitoring-net
-
 networks:
   monitoring-net:
     driver: bridge
-
-
 volumes:
   elasticsearch-data:
     driver: local
