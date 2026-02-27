@@ -4,7 +4,7 @@ Stack completo de honeypots con monitoreo Elasticsearch + Kibana + Logstash.
 
 ## 🚀 Características
 
-- **Honeypots**: Cowrie (SSH/Telnet), Dionaea (FTP/SMB), RDPy (RDP), DVWA (Web vulnerable)
+- **Honeypots**: Cowrie (SSH/Telnet), RDPy (RDP) y DVWA (Web vulnerable)
 - **Monitoreo**: Elasticsearch + Kibana + Logstash (ELK Stack)
 - **Automatización**: Script de instalación y configuración completo
 
