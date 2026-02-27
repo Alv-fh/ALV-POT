@@ -172,6 +172,10 @@ create_dirs() {
         sleep 0.05
     done
     print "Estructura de directorios lista"
+    # Permisos requeridos por Cowrie (corre con UID 2000)
+    sudo chown -R 2000:2000 data/cowrie
+    sudo chmod -R 755 data/cowrie
+    print "Permisos de Cowrie aplicados (2000:2000)"
     echo ""
 }
 
