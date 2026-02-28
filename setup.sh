@@ -188,10 +188,9 @@ start_containers() {
     info "Usando: $COMPOSE_CMD"
     echo ""
 
-    start_spinner "Descargando imágenes y levantando servicios..."
+    # Ejecutar docker compose y mostrar output directamente
     $COMPOSE_CMD up -d --quiet-pull 2>&1
-    stop_spinner
-
+    
     print "Contenedores iniciados"
     echo ""
 
@@ -209,6 +208,8 @@ start_containers() {
         done
     echo ""
 }
+
+
 
 # ─── Esperar Elasticsearch ────────────────────────────────────────
 wait_elasticsearch() {
