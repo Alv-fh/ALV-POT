@@ -22,4 +22,4 @@ git clone https://github.com/Alv-fh/ALV-POT
 cd ALV-POT
 # 2. Iniciar stack
 chmod +x setup.sh
-sudo bash setup.sh
+sudo bash setup.sh start
