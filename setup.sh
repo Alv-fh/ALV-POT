@@ -87,7 +87,7 @@ start_spinner() {
 stop_spinner() {
     if [ -n "$spinner_pid" ]; then
         kill "$spinner_pid" 2>/dev/null
-        wait "$spinner_pid" 2>/dev/null
+        wait "$spinner_pid" 2>/dev/null || true
         spinner_pid=""
         printf "\r\033[K"
     fi
