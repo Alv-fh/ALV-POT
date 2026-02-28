@@ -20,10 +20,6 @@ Stack completo de honeypots con monitoreo Elasticsearch + Kibana + Logstash.
 # 1. Clonar repositorio
 git clone https://github.com/Alv-fh/ALV-POT
 cd ALV-POT
-# 2. Instalar Docker (si no está instalado)
-chmod +x scripts/install-docker.sh
-./scripts/install-docker.sh
-
-# 3. Iniciar stack
+# 2. Iniciar stack
 chmod +x setup.sh
-./setup.sh start
+sudo bash setup.sh
