@@ -34,7 +34,7 @@ divider() { echo -e "${DIM}─────────────────�
 # ─── Banner ───────────────────────────────────────────────────────
 banner() {
     clear
-    echo -e "${GREEN}${BOLD}"
+    echo -e "${RED}${BOLD}"
     echo '  ░█████╗░██╗░░░░░██╗░░░██╗░░░░░░██████╗░░█████╗░████████╗'
     echo '  ██╔══██╗██║░░░░░██║░░░██║░░░░░░██╔══██╗██╔══██╗╚══██╔══╝'
     echo '  ███████║██║░░░░░╚██╗░██╔╝█████╗██████╔╝██║░░██║░░░██║░░░'
@@ -42,7 +42,7 @@ banner() {
     echo '  ██║░░██║███████╗░░╚██╔╝░░░░░░░░██║░░░░░╚█████╔╝░░░██║░░░'
     echo '  ╚═╝░░╚═╝╚══════╝░░░╚═╝░░░░░░░░░╚═╝░░░░░░╚════╝░░░╚═╝░░░'
     echo -e "${NC}"
-    echo -e "  ${DIM}Honeypot Stack  •  ELK + Cowrie + RDPY + DVWA${NC}"
+    echo -e "  ${DIM}Honeypot Stack  •  ELK + Cowrie + RDPY + DVWA + HoneyWeb${NC}"
     divider
     echo ""
 }
@@ -171,6 +171,7 @@ create_dirs() {
         "data/rdpy/logs"
         "data/dvwa/logs"
         "data/dvwa/mysql"
+        "data/honeyweb/logs"
         "config/kibana/dashboards"
         "config/nginx"
     )
@@ -269,7 +270,8 @@ start_containers() {
     info "Usando: $COMPOSE_CMD"
     echo ""
 
-    $COMPOSE_CMD up -d --quiet-pull 2>&1
+    # --build para reconstruir honeyweb si hay cambios en el Dockerfile/app.py
+    $COMPOSE_CMD up -d --build --quiet-pull 2>&1
 
     print "Contenedores iniciados"
     echo ""
@@ -311,13 +313,16 @@ wait_elasticsearch() {
 }
 
 # ─── Esperar Kibana ───────────────────────────────────────────────
+# Kibana está detrás de Nginx (Basic Auth), así que hacemos curl
+# directamente al puerto interno del contenedor, sin pasar por Nginx.
 wait_kibana() {
     header "Esperando Kibana"
-    local max_attempts=40
+    local max_attempts=24  # 24 x 5s = 2 minutos máximo
     local attempt=0
+    local kibana_url="http://localhost:5601/api/status"
 
-    start_spinner "Conectando con Kibana en localhost:5601 (puede tardar ~2 min)..."
-    until curl -s "http://localhost:5601/api/status" | grep -q '"level":"available"' 2>/dev/null; do
+    start_spinner "Esperando que Kibana esté listo..."
+    until curl -s --max-time 3 "$kibana_url" 2>/dev/null | grep -q '"level":"available"'; do
         attempt=$((attempt+1))
         if [ "$attempt" -ge "$max_attempts" ]; then
             stop_spinner
@@ -378,8 +383,9 @@ summary() {
     echo -e "  ${BOLD}Servicios disponibles:${NC}"
     echo -e "  ${CYAN}●${NC}  Kibana         →  ${BOLD}http://localhost:5601${NC}  ${DIM}(usuario/contraseña configurados)${NC}"
     echo -e "  ${CYAN}●${NC}  Elasticsearch  →  ${BOLD}http://localhost:9200${NC}"
-    echo -e "  ${CYAN}●${NC}  DVWA           →  ${BOLD}http://localhost${NC}  ${DIM}(admin/password)${NC}"
-    echo -e "  ${CYAN}●${NC}  Cowrie SSH     →  ${BOLD}localhost:2222${NC}    ${DIM}(cualquier usuario/pass)${NC}"
+    echo -e "  ${CYAN}●${NC}  DVWA           →  ${BOLD}http://localhost${NC}       ${DIM}(admin/password)${NC}"
+    echo -e "  ${CYAN}●${NC}  HoneyWeb       →  ${BOLD}http://localhost:81${NC}    ${DIM}(panel de login falso)${NC}"
+    echo -e "  ${CYAN}●${NC}  Cowrie SSH     →  ${BOLD}localhost:2222${NC}         ${DIM}(cualquier usuario/pass)${NC}"
     echo -e "  ${CYAN}●${NC}  Cowrie Telnet  →  ${BOLD}localhost:2223${NC}"
     echo -e "  ${CYAN}●${NC}  RDPY           →  ${BOLD}localhost:3389${NC}"
     echo ""
