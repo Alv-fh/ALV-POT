@@ -93,6 +93,7 @@ services:
       - ./data/dionaea/log:/var/log/dionaea:ro
       - ./data/rdpy/logs:/var/log/rdpy:ro
       - ./data/dvwa/logs:/var/log/dvwa:ro
+      - ./data/honeyweb/logs:/var/log/honeyweb:ro
     ports:
       - "5044:5044"
       - "5000:5000"
@@ -174,6 +175,19 @@ services:
     depends_on:
       - dvwa-mysql
     restart: unless-stopped
+    networks:
+      - monitoring-net
+  
+  honeyweb:
+    build:
+      context: ./honeyweb
+      dockerfile: Dockerfile
+    container_name: honeyweb
+    restart: unless-stopped
+    ports:
+      - "81:81"
+    volumes:
+      - ./data/honeyweb/logs:/var/log/honeyweb
     networks:
       - monitoring-net
 
