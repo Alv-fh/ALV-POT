@@ -10,7 +10,7 @@ Stack completo hecho con Docker de honeypots con monitoreo Elasticsearch + Kiban
 
 ## 📦 Requisitos
 
-- Linux (Ubuntu/Debian/CentOS)
+- Linux (Ubuntu/Debian)
 - 4GB RAM mínimo (8GB recomendado)
 - 20GB espacio en disco
 
