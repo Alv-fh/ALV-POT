@@ -1,6 +1,6 @@
 # 🛡️ Honeypot Stack with ELK
 
-Stack completo de honeypots con monitoreo Elasticsearch + Kibana + Logstash.
+Stack completo hecho con Docker de honeypots con monitoreo Elasticsearch + Kibana + Logstash.
 
 ## 🚀 Características
 
