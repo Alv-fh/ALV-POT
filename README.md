@@ -4,7 +4,7 @@ Stack completo hecho con Docker de honeypots con monitoreo Elasticsearch + Kiban
 
 ## 🚀 Características
 
-- **Honeypots**: Cowrie (SSH/Telnet), RDPy (RDP) y DVWA (Web vulnerable)
+- **Honeypots**: Cowrie (SSH/Telnet), RDPy (RDP), DVWA (Web vulnerable) y HoneyWeb (Panel de Login a una intranet)
 - **Monitoreo**: Elasticsearch + Kibana + Logstash (ELK Stack)
 - **Automatización**: Script de instalación y configuración completo
 
