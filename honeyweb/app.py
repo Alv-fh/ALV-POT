@@ -5,6 +5,14 @@ import os
 
 app = Flask(__name__)
 
+@app.route('/favicon.ico')
+def favicon_ico():
+    return send_from_directory(
+        os.path.join(app.root_path, 'static'),
+        'favicon.png'
+    )
+
+
 # ─── Logging ──────────────────────────────────────────────────────
 os.makedirs("/var/log/honeyweb", exist_ok=True)
 
@@ -21,7 +29,7 @@ LOGIN_HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}?v=1">
     <title>Intranet Corporativa — Acceso</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
