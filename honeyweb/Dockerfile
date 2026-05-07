@@ -4,7 +4,7 @@ WORKDIR /app
 
 RUN pip install flask --no-cache-dir
 
-COPY app.py .
+COPY . .
 
 RUN mkdir -p /var/log/honeyweb
 
